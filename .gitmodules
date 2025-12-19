@@ -1,0 +1,4 @@
+[submodule "chess-env"]
+	path = chess-env
+	url = https://github.com/AIcrowd/chess-env.git
+	branch = main

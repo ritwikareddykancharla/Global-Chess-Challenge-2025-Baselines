@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+.env
+
+data/*.parquet
+trained_models/*
+eval_results_during_training/
+eval_results/
+wandb/

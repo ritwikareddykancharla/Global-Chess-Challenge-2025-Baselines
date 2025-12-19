@@ -1,0 +1,1 @@
+curl -JLO "https://huggingface.co/datasets/aicrowd/ChessExplained/resolve/main/ChessExplained_2500k_qwen3.parquet?download=true"
