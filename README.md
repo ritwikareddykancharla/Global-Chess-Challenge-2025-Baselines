@@ -34,7 +34,18 @@ Traditional chess representations like FEN strings have tokenization issues:
 ## 🚀 Quick Start
 
 1. **Download the dataset**: `cd data && bash download_data.sh`
-2. **Train the model**: `python train.py --output-dir ./trained_models/your_model_name`
+2. **Train the model on trainium trn1.2xlarge instance**: 
+```bash
+docker build -t neuronx-training-py310:latest .
+bash start_docker_trainium.sh
+# Run this inside the container 
+torchrun --nproc_per_node 2 train.py --output-dir ./trained_models/your_model_name
+```
+3. **Train the model on nvidia gpu**: 
+```bash
+pip install -r requirements_nvidia.txt
+python train_nvidia.py --output-dir ./trained_models/your_model_name
+```
 
 ## 🔧 Dataset Preparation (Optional)
 
@@ -43,6 +54,18 @@ Modify encoding schemes or add custom prompting:
 - `encode_with_special_tokens.ipynb` - Encode chess positions using special tokens
 
 ---
+
+## ⚙ Neuron Settings
+
+The script assumes trn1.2xlarge instance. Change the settings according to your instance.
+
+* NEURON_COMPILE_CACHE_URL - Sets the directory path for caching compiled Neuron models to avoid recompilation
+* NEURON_CC_FLAGS - Configures the Neuron compiler with transformer model type and disables automatic type casting
+* XLA_USE_BF16 - Enables bfloat16 precision for XLA operations to improve performance on supported hardware
+* NEURON_FUSE_SOFTMAX - Enable softmax fusion optimization for better performance
+* XLA_DOWNCAST_BF16 - Automatically downcast operations to bfloat16 precision
+* NEURON_CC_PIPELINE_SIZE - Set the pipeline parallelism degree for model compilation
+* --nproc_per_node - 2 for 2xlarge instance
 
 ## 🏋️ Training
 
