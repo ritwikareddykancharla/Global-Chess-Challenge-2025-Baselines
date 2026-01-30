@@ -1,5 +1,5 @@
 import os
-os.environ["WANDB_MODE"] = "disabled"
+
 
 # Neuron/XLA optimizations - set before importing torch
 os.makedirs("./neuron_cache", exist_ok=True)
@@ -13,7 +13,7 @@ os.environ["XLA_USE_BF16"] = "1"
 import torch
 import argparse
 from datasets import load_dataset, Dataset
-import wandb
+
 from transformers import AutoTokenizer
 from optimum.neuron.trainers import NeuronSFTTrainer, NeuronSFTConfig, NeuronTrainingArguments
 from optimum.neuron.models.training import NeuronModelForCausalLM
@@ -57,9 +57,7 @@ SAVE_TOTAL_LIMIT = 3
 # Trainium-specific settings for trn1.2xlarge (2 NeuronCores)
 TENSOR_PARALLEL_SIZE = 2
 
-# Extract directory name for wandb run name
-run_name = os.path.basename(os.path.normpath(OUTPUT_DIR))
-wandb.init(project="ChessLLM", name=run_name)
+
 
 print("="*80)
 print("Training on AWS Trainium trn1.2xlarge")
@@ -92,7 +90,7 @@ training_args = NeuronTrainingArguments(
     output_dir=OUTPUT_DIR,
     warmup_steps=WARMUP_STEPS,
     logging_steps=100,
-    report_to="wandb",
+    report_to="none",
     save_steps=SAVE_STEPS,
     save_total_limit=SAVE_TOTAL_LIMIT,
     save_strategy="steps",
@@ -222,5 +220,4 @@ except KeyboardInterrupt:
     print("Checkpoint saved.")
     
 finally:
-    wandb.finish()
-    print("\nTraining session ended.")
+print("\nTraining session ended.")
