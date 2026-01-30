@@ -48,8 +48,10 @@ TENSOR_PARALLEL_SIZE = 2
 # ================================
 # Dataset
 # ================================
-print("Loading dataset…")ndataset = load_dataset(DATASET_NAME, split="train")nif NUM_LINES_TO_LOAD:
-    dataset = dataset.select(range(min(NUM_LINES_TO_LOAD, len(dataset))))
+print("Loading dataset…")
+dataset = load_dataset(DATASET_NAME, split="train")
+if NUM_LINES_TO_LOAD:
+    dataset = dataset.select(range(min(NUM_LINES_TO_LOAD, len(dataset)))))
 
 # ================================
 # Tokenizer
