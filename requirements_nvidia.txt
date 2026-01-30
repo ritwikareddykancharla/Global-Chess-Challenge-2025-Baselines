@@ -1,23 +1,31 @@
-chess==1.11.2
-datasets==4.4.1
-Jinja2==3.1.6
-
-# 🔒 ABI-safe (DO NOT CHANGE)
+# Core numerics (ABI-safe on Kaggle)
 numpy==1.26.4
 pandas==2.1.4
 pyarrow==22.0.0
 
-openai==2.8.1
+# HF data stack
+datasets==4.4.1
 
+# Torch stack (Kaggle GPU)
 torch==2.7.1
 torchaudio==2.7.1
 torchvision==0.22.1
 
-tqdm==4.67.1
-transformers==4.57.1
-accelerate==0.30.1
+# Transformers ecosystem (PINNED TOGETHER)
+transformers==4.56.2
+accelerate==0.32.1
+peft==0.17.1
 
+# Misc
+tqdm==4.67.1
+Jinja2==3.1.6
+openai==2.8.1
+chess==1.11.2
+
+# vLLM (works with torch 2.7.x)
 vllm==0.10.1
+
+# Optional (you can delete, but safe)
 wandb==0.23.0
 
 -r chess-env/requirements.txt
