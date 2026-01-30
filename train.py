@@ -1,5 +1,4 @@
 import os
-os.environ["WANDB_MODE"] = "disabled"
 
 # Neuron/XLA optimizations - set before importing torch
 os.makedirs("./neuron_cache", exist_ok=True)
@@ -12,8 +11,7 @@ os.environ["XLA_USE_BF16"] = "1"
 
 import torch
 import argparse
-from datasets import Dataset
-import wandb
+from datasets import load_dataset
 from transformers import AutoTokenizer
 from optimum.neuron.trainers import NeuronSFTTrainer, NeuronSFTConfig, NeuronTrainingArguments
 from optimum.neuron.models.training import NeuronModelForCausalLM
@@ -35,12 +33,11 @@ if os.path.exists(args.output_dir):
 
 # Configuration
 MODEL_NAME = "Qwen/Qwen3-0.6B"
-DATASET_PATH = "./data/ChessExplained_2500k_qwen3.parquet"
-assert os.path.exists(DATASET_PATH), f"Dataset file '{DATASET_PATH}' does not exist, please run the download script in the data directory"
+DATASET_NAME = "aicrowd/ChessExplained"  # Load from HuggingFace Hub
 TOKENIZER_PATH = "./data_preparation/chess_tokenizer_qwen3/"
 TOKENIZER_PATH = os.path.abspath(TOKENIZER_PATH)
 OUTPUT_DIR = args.output_dir
-NUM_LINES_TO_LOAD = 1_000_0
+NUM_LINES_TO_LOAD = 10000
 
 MAX_LENGTH = 512  
 
@@ -60,9 +57,8 @@ SAVE_TOTAL_LIMIT = 3
 # Trainium-specific settings for trn1.2xlarge (2 NeuronCores)
 TENSOR_PARALLEL_SIZE = 2
 
-# Extract directory name for wandb run name
+# Run name for logging
 run_name = os.path.basename(os.path.normpath(OUTPUT_DIR))
-wandb.init(project="ChessLLM", name=run_name)
 
 print("="*80)
 print("Training on AWS Trainium trn1.2xlarge")
@@ -72,7 +68,9 @@ print(f"Neuron Cache: {os.environ['NEURON_COMPILE_CACHE_URL']}")
 print("="*80)
 
 # %%
-dataset = Dataset.from_parquet(DATASET_PATH).select(range(NUM_LINES_TO_LOAD))
+print(f"Loading dataset from HuggingFace: {DATASET_NAME}")
+dataset = load_dataset(DATASET_NAME, split="train")
+dataset = dataset.select(range(min(NUM_LINES_TO_LOAD, len(dataset))))
 print(f"Loaded {len(dataset)} examples")
 
 # %%
@@ -93,7 +91,7 @@ training_args = NeuronTrainingArguments(
     output_dir=OUTPUT_DIR,
     warmup_steps=WARMUP_STEPS,
     logging_steps=100,
-    report_to="wandb",
+    report_to="none",
     save_steps=SAVE_STEPS,
     save_total_limit=SAVE_TOTAL_LIMIT,
     save_strategy="steps",
@@ -223,5 +221,4 @@ except KeyboardInterrupt:
     print("Checkpoint saved.")
     
 finally:
-    wandb.finish()
     print("\nTraining session ended.")
