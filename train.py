@@ -1,4 +1,13 @@
 import os
+import warnings
+import logging
+
+# Suppress warnings
+warnings.filterwarnings("ignore")
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("datasets").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Neuron/XLA optimizations - set before importing torch
 os.makedirs("./neuron_cache", exist_ok=True)
