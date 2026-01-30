@@ -220,4 +220,4 @@ except KeyboardInterrupt:
     print("Checkpoint saved.")
     
 finally:
-print("\nTraining session ended.")
+    print("\nTraining session ended.")
