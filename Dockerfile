@@ -1,4 +1,4 @@
-FROM public.ecr.aws/neuron/pytorch-training:2.0.1-neuronx-py310
+FROM public.ecr.aws/neuron/pytorch-training:1.13.1-neuronx-py310
 
 # Prevent Python buffering
 ENV PYTHONUNBUFFERED=1
@@ -15,23 +15,22 @@ WORKDIR /workspace
 # Upgrade pip
 RUN pip install --upgrade pip
 
-# ---- Python deps (PINNED & NEURON-SAFE) ----
+# ---- Python deps (Neuron-safe, pinned) ----
 RUN pip install \
-    transformers==4.35.2 \
-    tokenizers==0.14.1 \
-    peft==0.7.1 \
-    accelerate==0.24.1 \
+    transformers==4.30.2 \
+    tokenizers==0.13.3 \
+    peft==0.6.0 \
+    accelerate==0.21.0 \
     datasets \
     pyarrow \
     sentencepiece \
     protobuf \
     --index-url https://pypi.org/simple
 
-# ---- Neuron libs (installed last) ----
+# ---- Neuron libs ----
 RUN pip install \
-    optimum-neuron==0.0.19 \
     neuronx-distributed \
-    --no-deps \
+    optimum-neuron \
     --index-url https://pip.repos.neuron.amazonaws.com
 
 # Copy code last
