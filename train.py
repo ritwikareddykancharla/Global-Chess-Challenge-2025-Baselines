@@ -67,7 +67,8 @@ print("=" * 80)
 # ================================
 # Dataset (assumes parquet already flattened to `text` column)
 # ================================
-print("Loading parquet dataset…")ndataset = Dataset.from_parquet(DATASET_PATH)
+print("Loading parquet dataset…")
+dataset = Dataset.from_parquet(DATASET_PATH)
 dataset = dataset.select(range(min(NUM_LINES_TO_LOAD, len(dataset))))
 print(f"Loaded {len(dataset)} examples")
 
