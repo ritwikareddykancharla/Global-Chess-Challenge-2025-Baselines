@@ -11,6 +11,7 @@ os.environ["XLA_USE_BF16"] = "1"
 
 import argparse
 import torch
+import pyarrow.parquet as pq
 from datasets import Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -65,12 +66,26 @@ print(f"Neuron Cache: {os.environ['NEURON_COMPILE_CACHE_URL']}")
 print("=" * 80)
 
 # ================================
-# Dataset (assumes parquet already flattened to `text` column)
+# Dataset (flatten INSIDE train.py using raw PyArrow)
 # ================================
-print("Loading parquet dataset…")
-dataset = Dataset.from_parquet(DATASET_PATH)
-dataset = dataset.select(range(min(NUM_LINES_TO_LOAD, len(dataset))))
-print(f"Loaded {len(dataset)} examples")
+print("Loading parquet dataset with PyArrow (raw)…")
+
+table = pq.read_table(DATASET_PATH)
+rows = table.to_pylist()
+
+print("Flattening messages → text")
+texts = []
+for row in rows[:NUM_LINES_TO_LOAD]:
+    messages = row.get("messages", [])
+    text = ""
+    for m in messages:
+        role = m.get("role", "")
+        content = m.get("content", "")
+        text += f"{role}: {content}\n"
+    texts.append({"text": text})
+
+dataset = Dataset.from_list(texts)
+print(f"Loaded and flattened {len(dataset)} examples")
 
 # ================================
 # Tokenizer
