@@ -1,13 +1,15 @@
-# Dockerfile for Trainium training - uses newer SDK with NeuronSFTTrainer
+# Dockerfile for Trainium training
+# KEY: Only add datasets, do NOT upgrade any pre-installed packages
 FROM public.ecr.aws/neuron/pytorch-training-neuronx:2.5.1-neuronx-py310-sdk2.22.0-ubuntu22.04
 
 WORKDIR /workspace
 
-# Install compatible versions of required packages
-RUN pip install --no-cache-dir \
+# ONLY install datasets - do NOT install or upgrade optimum-neuron, peft, etc.
+# The base image has pre-tested compatible versions
+RUN pip install --no-cache-dir --no-deps \
     'datasets==2.14.0' \
     'pyarrow==14.0.0' \
-    'optimum-neuron>=0.0.25' \
-    'peft>=0.7.0' \
-    'trl>=0.7.0' \
-    'fsspec==2024.2.0'
+    'xxhash' \
+    'multiprocess' \
+    'dill' \
+    'fsspec'
