@@ -88,10 +88,15 @@ dataset = Dataset.from_list(texts)
 print(f"Loaded and flattened {len(dataset)} examples")
 
 # ================================
-# Tokenizer
+# Tokenizer (FORCE SLOW TOKENIZER – fixes Qwen tokenizer.json crash)
 # ================================
 print(f"Loading tokenizer from: {TOKENIZER_PATH}")
-tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH)
+tokenizer = AutoTokenizer.from_pretrained(
+    TOKENIZER_PATH,
+    use_fast=False,
+    trust_remote_code=True,
+)
+
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
