@@ -1,223 +1,152 @@
 import os
 
-
-# Neuron/XLA optimizations - set before importing torch
+# ================================
+# Neuron / XLA environment settings
+# ================================
 os.makedirs("./neuron_cache", exist_ok=True)
 os.environ["NEURON_COMPILE_CACHE_URL"] = "./neuron_cache"
 os.environ["NEURON_CC_FLAGS"] = "--model-type=transformer --auto-cast=none"
 os.environ["XLA_USE_BF16"] = "1"
-# os.environ["NEURON_FUSE_SOFTMAX"] = "1"
-# os.environ["XLA_DOWNCAST_BF16"] = "1"
-# os.environ["NEURON_CC_PIPELINE_SIZE"] = "4"
 
-import torch
 import argparse
-from datasets import load_dataset, Dataset
+import torch
+from datasets import load_dataset
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from transformers import AutoTokenizer
-from optimum.neuron.trainers import NeuronSFTTrainer, NeuronSFTConfig, NeuronTrainingArguments
-from optimum.neuron.models.training import NeuronModelForCausalLM
-
-# Parse command line arguments
-parser = argparse.ArgumentParser(description="Fine-tune LLM on chess dataset")
-parser.add_argument(
-    "--output-dir",
-    type=str,
-    default="./trained_models/chess_qwen_finetuned",
-    help="Directory to save the fine-tuned model and checkpoints"
+from optimum.neuron import NeuronModelForCausalLM
+from optimum.neuron.trainers import (
+    NeuronSFTTrainer,
+    NeuronSFTConfig,
+    NeuronTrainingArguments,
 )
+
+# ================================
+# CLI args
+# ================================
+parser = argparse.ArgumentParser()
+parser.add_argument("--output-dir", type=str, required=True)
 args = parser.parse_args()
 
-# Validate output directory argument
-assert args.output_dir and args.output_dir.strip(), "Output directory must be provided and non-empty"
-if os.path.exists(args.output_dir):
-    assert len(os.listdir(args.output_dir)) == 0, f"Output directory '{args.output_dir}' already exists and is not empty"
+OUTPUT_DIR = args.output_dir
+assert not os.path.exists(OUTPUT_DIR), "Output directory must not already exist"
 
-# Configuration
+# ================================
+# Config
+# ================================
 MODEL_NAME = "Qwen/Qwen3-0.6B"
 DATASET_NAME = "aicrowd/ChessExplained"
-OUTPUT_DIR = args.output_dir
-NUM_LINES_TO_LOAD = 10000
+NUM_LINES_TO_LOAD = 10_000
 
-MAX_LENGTH = 512  
-
+MAX_LENGTH = 512
 BATCH_SIZE = 1
 GRAD_ACCUM_STEPS = 4
-
 LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 0.001
+WEIGHT_DECAY = 1e-3
 WARMUP_STEPS = 500
-
-# Logging and checkpointing
-EVAL_STEPS = 3000
-LOGGING_STEPS = EVAL_STEPS 
-SAVE_STEPS = EVAL_STEPS
-SAVE_TOTAL_LIMIT = 3
-
-# Trainium-specific settings for trn1.2xlarge (2 NeuronCores)
 TENSOR_PARALLEL_SIZE = 2
 
-
-
-print("="*80)
-print("Training on AWS Trainium trn1.2xlarge")
-print(f"Tensor Parallel Size: {TENSOR_PARALLEL_SIZE}")
-print(f"Batch Size: {BATCH_SIZE}")
-print(f"Neuron Cache: {os.environ['NEURON_COMPILE_CACHE_URL']}")
-print("="*80)
-
-# %%
-dataset = load_dataset(DATASET_NAME, split="train")
-if NUM_LINES_TO_LOAD:
+# ================================
+# Dataset
+# ================================
+print("Loading dataset…")ndataset = load_dataset(DATASET_NAME, split="train")nif NUM_LINES_TO_LOAD:
     dataset = dataset.select(range(min(NUM_LINES_TO_LOAD, len(dataset))))
-print(f"Loaded {len(dataset)} examples")
 
-# %%
-# Load tokenizer
-print(f"Loading tokenizer from model: {MODEL_NAME}")
+# ================================
+# Tokenizer
+# ================================
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
-
-# Set pad token if not already set
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-training_args = NeuronTrainingArguments(
-    learning_rate=LEARNING_RATE,
-    weight_decay=WEIGHT_DECAY,
-    tensor_parallel_size=TENSOR_PARALLEL_SIZE,
-    per_device_train_batch_size=BATCH_SIZE,  # Batch size per device
-    gradient_accumulation_steps=GRAD_ACCUM_STEPS,
-    output_dir=OUTPUT_DIR,
-    warmup_steps=WARMUP_STEPS,
-    logging_steps=100,
-    report_to="none",
-    save_steps=SAVE_STEPS,
-    save_total_limit=SAVE_TOTAL_LIMIT,
-    save_strategy="steps",
-    dataloader_num_workers=4,
-    dataloader_drop_last=True,
-)
+# ================================
+# Prepare base model (resize embeddings)
+# ================================
+PREPARED_MODEL_DIR = MODEL_NAME.replace("/", "_") + "_prepared"
 
-# Prepare model with resized embeddings
-print(f"Loading model: {MODEL_NAME}")
-print("Preparing model with resized embeddings...")
-
-# Create a local directory for the prepared model
-model_name_safe = MODEL_NAME.replace("/", "_")
-PREPARED_MODEL_DIR = f"./{model_name_safe}_with_special_tokens"
 if not os.path.exists(PREPARED_MODEL_DIR):
-    print("Loading base model and resizing embeddings...")
-    from transformers import AutoModelForCausalLM
-    
-    # Load model normally on CPU (will be moved to Neuron cores later)
+    print("Preparing base model…")
     base_model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
         device_map="cpu",
     )
-    
-    # Resize embeddings to match tokenizer
     base_model.resize_token_embeddings(len(tokenizer))
-    
-    # Save both model and tokenizer to local directory
-    print(f"Saving prepared model to {PREPARED_MODEL_DIR}")
     base_model.save_pretrained(PREPARED_MODEL_DIR)
     tokenizer.save_pretrained(PREPARED_MODEL_DIR)
-    
-    # Clean up base model to free memory
     del base_model
-    print("Prepared model saved successfully!")
-else:
-    print(f"Using existing prepared model from {PREPARED_MODEL_DIR}")
 
-# Load model optimized for Trainium from prepared directory
-print("Loading model for Trainium training...")
-print("Note: First compilation will take several minutes, subsequent runs will be fast!")
+# ================================
+# Tokenization
+# ================================
+def tokenize_fn(examples):
+    return tokenizer(
+        examples["text"],
+        truncation=True,
+        padding="max_length",
+        max_length=MAX_LENGTH,
+    )
 
-tokenizer = AutoTokenizer.from_pretrained(PREPARED_MODEL_DIR)
+tokenized_dataset = dataset.map(
+    tokenize_fn,
+    batched=True,
+    remove_columns=dataset.column_names,
+)
+
+# ================================
+# Training args
+# ================================
+training_args = NeuronTrainingArguments(
+    output_dir=OUTPUT_DIR,
+    learning_rate=LEARNING_RATE,
+    weight_decay=WEIGHT_DECAY,
+    warmup_steps=WARMUP_STEPS,
+    per_device_train_batch_size=BATCH_SIZE,
+    gradient_accumulation_steps=GRAD_ACCUM_STEPS,
+    tensor_parallel_size=TENSOR_PARALLEL_SIZE,
+    logging_steps=100,
+    save_steps=3000,
+    save_total_limit=3,
+    report_to="none",
+    dataloader_drop_last=True,
+)
+
+training_config = NeuronSFTConfig(
+    packing=True,
+    **training_args.to_dict(),
+)
+
+# ================================
+# Load Neuron model
+# ================================
+print("Loading Neuron model (first compile is slow)…")
 model = NeuronModelForCausalLM.from_pretrained(
     PREPARED_MODEL_DIR,
     training_args.trn_config,
     dtype=torch.bfloat16,
 )
 
-# Configure training for Trainium (needed before loading model)
-training_config = NeuronSFTConfig(
-    packing=True,
-    **training_args.to_dict(),
-)
-
-
-print(f"Model loaded with {model.num_parameters():,} parameters")
-
-# %%
-# Formatting function for chess dataset
-def format_chess_dataset(example):
-    """Format chess dataset - simply return the text field."""
-    return example["text"]
-
-print("\n" + "="*80)
-print("Training Configuration:")
-print("="*80)
-print(f"  Batch size per device: {training_args.per_device_train_batch_size}")
-print(f"  Gradient accumulation: {training_args.gradient_accumulation_steps}")
-print(f"  Effective batch size: {training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps}")
-print(f"  Tensor parallel size: {TENSOR_PARALLEL_SIZE}")
-print(f"  Learning rate: {training_args.learning_rate}")
-print(f"  Weight decay: {training_args.weight_decay}")
-print(f"  Warmup steps: {training_args.warmup_steps}")
-print(f"  Total epochs: {training_args.num_train_epochs}")
-print(f"  Gradient checkpointing: {training_args.gradient_checkpointing}")
-print(f"  ZeRO-1 enabled: {training_args.zero_1}")
-print(f"  Max gradient norm: {training_args.max_grad_norm}")
-print("="*80 + "\n")
-
-# %%
-# Initialize NeuronSFTTrainer (following example.py pattern)
+# ================================
+# Trainer
+# ================================
 trainer = NeuronSFTTrainer(
     model=model,
     args=training_config,
+    train_dataset=tokenized_dataset,
     processing_class=tokenizer,
-    train_dataset=dataset,
-    formatting_func=format_chess_dataset,
 )
 
-print("NeuronTrainer initialized. Ready to start training.")
-print("\n⚠️  IMPORTANT: First run will compile graphs for a long time. Be patient!")
-print("Subsequent runs will use cached compilation and be much faster.\n")
+# ================================
+# Train
+# ================================
+print("Starting training 🚀")
+trainer.train()
 
-# %%
-try:
-    # Start training
-    print("Starting training...")
-    print("Monitor Neuron utilization with: neuron-top\n")
+# ================================
+# Save
+# ================================
+final_path = os.path.join(OUTPUT_DIR, "final_model")
+trainer.save_model(final_path)
+tokenizer.save_pretrained(final_path)
 
-    trainer.train()
-
-    print("\n" + "="*80)
-    print("✅ Training complete!")
-    print("="*80 + "\n")
-
-    # %%
-    # Save the final model and tokenizer
-    final_model_path = f"{OUTPUT_DIR}/final_model"
-    print(f"Saving final model to {final_model_path}")
-
-    trainer.save_model(final_model_path)
-    tokenizer.save_pretrained(final_model_path)
-
-    print(f"\n✅ Model and tokenizer saved to {final_model_path}")
-    print(f"\nTo load the model:")
-    print(f'  from transformers import AutoModelForCausalLM, AutoTokenizer')
-    print(f'  model = AutoModelForCausalLM.from_pretrained("{final_model_path}")')
-    print(f'  tokenizer = AutoTokenizer.from_pretrained("{final_model_path}")')
-    
-except KeyboardInterrupt:
-    print("\n⚠️  Training interrupted by user")
-    print("Saving current checkpoint...")
-    trainer.save_model(f"{OUTPUT_DIR}/interrupted_checkpoint")
-    print("Checkpoint saved.")
-    
-finally:
-    print("\nTraining session ended.")
+print("✅ Training complete and model saved")
