@@ -13,7 +13,7 @@ torchvision==0.22.1
 
 # Transformers ecosystem (PINNED TOGETHER)
 transformers==4.56.2
-accelerate==0.32.2
+accelerate==0.34.2
 peft==0.17.1
 
 # Misc
