@@ -55,7 +55,7 @@ class StockfishAgent(ChessAgent):
         self.depth = depth
         self.skill_level = skill_level
         self.time_limit_ms = time_limit_ms
-        self.engine = chess.engine.SimpleEngine.popen_uci("stockfish")
+        self.engine = chess.engine.SimpleEngine.popen_uci("/usr/games/stockfish")
         if skill_level is not None:
             self.engine.configure({"Skill Level": skill_level})
     
