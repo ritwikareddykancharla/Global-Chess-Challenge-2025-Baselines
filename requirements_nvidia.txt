@@ -1,6 +1,6 @@
 # Core numerics (ABI-safe on Kaggle)
-numpy==1.26.4
-pandas==2.1.4
+# numpy==1.26.4
+# pandas==2.1.4
 pyarrow==22.0.0
 
 # HF data stack
